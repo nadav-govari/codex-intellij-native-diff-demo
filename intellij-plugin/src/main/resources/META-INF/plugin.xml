@@ -1,0 +1,30 @@
+<idea-plugin>
+    <id>dev.codex.nativeDiff</id>
+    <name>Codex Native Diff</name>
+    <vendor>Local developer</vendor>
+
+    <description><![CDATA[
+      Reviews Codex CLI patches in IntelliJ's native editable diff before the
+      original Codex patch tool changes the working tree.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+    <depends>com.intellij.mcpServer</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="dev.codex.nativediff.NativeDiffBridgeService"/>
+        <postStartupActivity implementation="dev.codex.nativediff.NativeDiffStartupActivity"/>
+    </extensions>
+
+    <actions>
+        <action
+            id="dev.codex.nativeDiff.AttachEditorContext"
+            class="dev.codex.nativediff.AttachEditorContextAction"
+            text="Attach Editor Context to Codex"
+            description="Attach the active file or selected lines to the next Codex prompt">
+            <keyboard-shortcut keymap="$default" first-keystroke="meta alt shift K"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

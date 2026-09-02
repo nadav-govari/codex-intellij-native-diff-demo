@@ -1,0 +1,10 @@
+.gradle/
+build/
+__pycache__/
+*.py[cod]
+intellij-plugin/.gradle/
+intellij-plugin/build/
+intellij-plugin/.intellijPlatform/
+intellij-plugin/.idea/
+*.iml
+.DS_Store

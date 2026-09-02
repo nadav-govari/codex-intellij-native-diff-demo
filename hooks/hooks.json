@@ -1,0 +1,70 @@
+{
+  "description": "Routes Codex edits through IntelliJ's native editable diff when Read Only permissions are active.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/native_diff_hook.py\"",
+            "timeout": 5,
+            "statusMessage": "Loading IntelliJ native diff workflow",
+            "additionalContextLimit": 500
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/native_diff_hook.py\"",
+            "timeout": 5,
+            "statusMessage": "Attaching IntelliJ editor context",
+            "additionalContextLimit": 10000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|mcp__idea__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/native_diff_hook.py\"",
+            "timeout": 86400,
+            "statusMessage": "Waiting for IntelliJ patch review"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "^(Bash|apply_patch|mcp__idea__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/native_diff_hook.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking native diff authorization"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|mcp__idea__apply_patch)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/native_diff_hook.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

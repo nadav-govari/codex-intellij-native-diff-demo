@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "codex is not installed or is not on PATH" >&2
+  exit 127
+fi
+
+# Scope the workaround to this Codex process. Current Code Mode releases do not
+# emit PreToolUse for nested apply_patch calls, so the native-diff hook cannot
+# observe them. Direct tools preserve coding functionality and deliver hooks.
+exec codex --disable code_mode --disable code_mode_only "$@"

@@ -1,0 +1,21 @@
+{
+  "name": "codex-jetbrains-native-diff",
+  "version": "0.1.0",
+  "description": "Review Codex patches and attach IntelliJ editor context to the next prompt.",
+  "author": {
+    "name": "Local developer"
+  },
+  "license": "MIT",
+  "keywords": ["codex", "intellij", "diff", "review", "editor-context"],
+  "interface": {
+    "displayName": "Codex IntelliJ Native Diff",
+    "shortDescription": "Native patch review and editor context for Codex.",
+    "longDescription": "Adds a manual review flow for Codex CLI and a configurable IntelliJ shortcut that attaches the active file or selected lines to the next prompt.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Make this change and let me review the native IntelliJ diff."
+    ]
+  }
+}
