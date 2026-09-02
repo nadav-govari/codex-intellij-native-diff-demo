@@ -6,7 +6,7 @@ if ! command -v codex >/dev/null 2>&1; then
   exit 127
 fi
 
-# Scope the workaround to this Codex process. Current Code Mode releases do not
-# emit PreToolUse for nested apply_patch calls, so the native-diff hook cannot
-# observe them. Direct tools preserve coding functionality and deliver hooks.
-exec codex --disable code_mode --disable code_mode_only "$@"
+# Scope the compatibility model to this Codex process. GPT-5.6 is currently
+# code-mode-only, and Codex CLI 0.149.1 does not deliver hooks for its nested
+# apply_patch calls. GPT-5.5 exposes direct, hook-compatible tools.
+exec codex -m gpt-5.5 "$@"

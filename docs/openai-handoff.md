@@ -67,14 +67,23 @@ event required by this integration, so it reaches the filesystem without native
 review. The same behavior is tracked in
 [openai/codex#23411](https://github.com/openai/codex/issues/23411).
 
-The included `scripts/codex-native-diff` launcher disables only Code Mode and
-Code-Mode-only routing for its child process. Codex then exposes direct tools,
-and patch hooks work. This is an operational workaround, not the desired native
-solution.
+GPT-5.6 models are marked `code_mode_only` in the Codex model catalog. Testing an
+interactive GPT-5.6 resume showed that `--disable code_mode --disable
+code_mode_only` did not override that routing: the process still launched the
+Code Mode host and the transcript still contained `exec` calls. The included
+`scripts/codex-native-diff` launcher therefore selects GPT-5.5, whose direct
+tools deliver hooks on the stock CLI. This is only a compatibility demonstration,
+not the desired native solution.
 
 A native fix would deliver lifecycle hooks for every nested tool call with the
 real nested tool name and input, before execution, regardless of whether the
 call originated from direct model output or the JavaScript orchestrator.
+
+There is no model-level barrier to using GPT-5.6. A separately built Codex CLI
+with that nested-hook fix can preserve GPT-5.6 and this deterministic review
+architecture. An MCP patch tool is another possible workaround, but unless the
+stock writer can be hidden or blocked it relies on model routing and is weaker
+than fixing the CLI hook boundary.
 
 ### Hook permission metadata is not expressive enough
 

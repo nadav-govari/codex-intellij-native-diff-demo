@@ -26,6 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 PROTOCOL_VERSION = 1
 MANUAL_MODE = "default"
 AUTO_MODES = {"acceptEdits", "dontAsk", "bypassPermissions"}
+WRITABLE_SANDBOX_MODES = {"workspace-write", "danger-full-access"}
 AUTH_TTL_SECONDS = 120
 CONNECT_TIMEOUT_SECONDS = 2
 MAX_EDITOR_ATTACHMENTS = 20
@@ -418,6 +419,78 @@ def _extract_patch(tool_name: str, tool_input: Any) -> Tuple[Optional[str], Opti
     return None, None
 
 
+def _reverse_lines(path: Path) -> Iterable[bytes]:
+    """Yield non-empty lines from a file newest-first without loading it all."""
+
+    chunk_size = 64 * 1024
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        position = stream.tell()
+        remainder = b""
+        while position > 0:
+            size = min(chunk_size, position)
+            position -= size
+            stream.seek(position)
+            block = stream.read(size) + remainder
+            lines = block.split(b"\n")
+            remainder = lines[0]
+            for line in reversed(lines[1:]):
+                if line:
+                    yield line
+        if remainder:
+            yield remainder
+
+
+def _latest_sandbox_mode(event: Dict[str, Any]) -> Optional[str]:
+    """Read the effective desktop sandbox from the latest turn context.
+
+    Codex hook events expose the legacy permission mode, where ``default`` can
+    represent either Read Only or a managed Auto profile. The persisted turn
+    context contains the effective sandbox policy and is the authoritative way
+    to distinguish those cases.
+    """
+
+    transcript_value = event.get("transcript_path")
+    if not isinstance(transcript_value, str) or not transcript_value:
+        return None
+    try:
+        for raw_line in _reverse_lines(Path(transcript_value)):
+            try:
+                record = json.loads(raw_line)
+            except (UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(record, dict) or record.get("type") != "turn_context":
+                continue
+            payload = record.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            sandbox_policy = payload.get("sandbox_policy")
+            if not isinstance(sandbox_policy, dict):
+                continue
+            sandbox_mode = sandbox_policy.get("type")
+            if isinstance(sandbox_mode, str):
+                return sandbox_mode
+    except OSError:
+        return None
+    return None
+
+
+def _is_manual_mode(event: Dict[str, Any]) -> bool:
+    permission_mode = event.get("permission_mode")
+    if permission_mode != MANUAL_MODE:
+        return False
+
+    sandbox_mode = _latest_sandbox_mode(event)
+    if sandbox_mode in WRITABLE_SANDBOX_MODES:
+        return False
+    if sandbox_mode == "read-only":
+        return True
+
+    # Preserve the existing fail-closed behavior for older Codex builds and
+    # external hook runners that do not persist turn_context records.
+    return True
+
+
 def _git_ignored(root: Path, candidate: Path) -> bool:
     try:
         relative = candidate.relative_to(root)
@@ -454,19 +527,55 @@ def _candidate_is_visible(root: Path, token: str) -> Optional[bool]:
     return not _git_ignored(root, resolved)
 
 
+def _shell_tokens(command: str) -> List[str]:
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
+    except ValueError:
+        return []
+
+
+def _shell_segments(tokens: Sequence[str]) -> List[List[str]]:
+    segments: List[List[str]] = []
+    current: List[str] = []
+    for token in tokens:
+        if token in {";", "&&", "||", "|"}:
+            if current:
+                segments.append(current)
+                current = []
+        else:
+            current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
 def _mutation_targets(command: str) -> Tuple[bool, List[str]]:
     """Return whether this is obvious direct authoring and its likely targets."""
 
     targets: List[str] = []
     direct = False
     lowered = command.lower()
+    tokens = _shell_tokens(command)
 
-    for match in re.finditer(r"(?:^|[^<])(?:>>|>)\s*([^\s;&|]+)", command):
-        direct = True
-        targets.append(match.group(1))
+    for index, token in enumerate(tokens[:-1]):
+        if token in {">", ">>"}:
+            direct = True
+            targets.append(tokens[index + 1])
 
-    if re.search(r"\b(?:git\s+apply|apply_patch|patch\s+-p\d*)\b", lowered):
-        direct = True
+    for segment in _shell_segments(tokens):
+        if not segment:
+            continue
+        name = Path(segment[0]).name
+        args = segment[1:]
+        if name == "apply_patch":
+            direct = True
+        elif name == "git" and "apply" in args:
+            direct = True
+        elif name == "patch" and any(arg == "-p" or arg.startswith("-p") for arg in args):
+            direct = True
 
     if re.search(r"\b(?:sed\b[^\n;|]*\s-i(?:\s|$)|perl\b[^\n;|]*\s-pi)", lowered):
         direct = True
@@ -477,20 +586,14 @@ def _mutation_targets(command: str) -> Tuple[bool, List[str]]:
     ):
         direct = True
 
-    try:
-        tokens = shlex.split(command, comments=False, posix=True)
-    except ValueError:
-        tokens = []
     command_names = {"tee", "rm", "mv", "cp", "install", "truncate", "touch"}
-    for index, token in enumerate(tokens):
-        name = Path(token).name
+    for segment in _shell_segments(tokens):
+        name = Path(segment[0]).name
         if name not in command_names:
             continue
         direct = True
         args: List[str] = []
-        for value in tokens[index + 1 :]:
-            if value in {";", "&&", "||", "|"}:
-                break
+        for value in segment[1:]:
             if not value.startswith("-"):
                 args.append(value)
         if name == "tee":
@@ -629,8 +732,7 @@ def handle_user_prompt(event: Dict[str, Any]) -> None:
 
 
 def handle_pre_tool(event: Dict[str, Any]) -> None:
-    mode = event.get("permission_mode")
-    if mode != MANUAL_MODE:
+    if not _is_manual_mode(event):
         return
     tool_name = str(event.get("tool_name") or "")
     tool_input = event.get("tool_input")
@@ -677,7 +779,7 @@ def handle_pre_tool(event: Dict[str, Any]) -> None:
 
 
 def handle_permission_request(event: Dict[str, Any]) -> None:
-    if event.get("permission_mode") != MANUAL_MODE:
+    if not _is_manual_mode(event):
         return
     tool_name = str(event.get("tool_name") or "")
     tool_input = event.get("tool_input")

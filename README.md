@@ -41,26 +41,34 @@ then restart IntelliJ. Install the Codex personal plugin from the `personal`
 marketplace and start a new Codex session. Run `/hooks` once to review and trust
 the bundled hook definition.
 
-### Current Code Mode workaround
+### Current GPT-5.6 limitation
 
-Codex CLI 0.149.1 does not emit `PreToolUse` for `apply_patch` calls nested under
-Code Mode's JavaScript `exec` tool. Until that upstream gap is fixed, start only
-the Codex process that should use native diffs through the included launcher:
+GPT-5.6 uses Programmatic Tool Calling (called Code Mode in Codex CLI). In Codex
+CLI 0.149.1, `apply_patch` calls nested under the JavaScript `exec` tool do not
+emit the `PreToolUse` event this integration requires. GPT-5.6 is also marked
+`code_mode_only`; the CLI's `--disable code_mode --disable code_mode_only` flags
+were verified not to override that routing for an interactive GPT-5.6 session.
+
+This is a stock Codex CLI integration limitation, not a limitation of GPT-5.6's
+ability to write code. GPT-5.6 can use this architecture with a patched Codex
+build that delivers hooks for nested tool calls. That patched CLI is not bundled
+in this repository.
+
+For a working demonstration on the stock CLI, the included launcher selects
+GPT-5.5, which exposes hook-compatible direct tools:
 
 ```sh
 ./scripts/codex-native-diff
 ```
 
-To resume an existing conversation through the hook-compatible direct-tool path:
+To resume an existing conversation through that direct-tool path:
 
 ```sh
 ./scripts/codex-native-diff resume
 ```
 
-This does not disable coding capabilities. It disables the JavaScript tool
-orchestrator for that process, so Codex invokes `apply_patch` directly and the
-hook can review it. It does not change global Codex configuration or other
-running sessions.
+The launcher changes the model only for its child Codex process. It does not
+change global Codex configuration or other running sessions.
 
 ## Use
 
@@ -70,9 +78,10 @@ Run `/permissions` in Codex CLI:
 - **Read Only** enables Manual native-diff review.
 - **Plan** remains planning-only and is not treated as Manual mode.
 
-The mode is read from every hook event, so changing it takes effect on the next
-tool call. The Code Mode workaround above is currently required for patch hook
-events to be delivered at all.
+The hook combines the legacy mode from each hook event with the effective sandbox
+policy in the latest persisted turn context. This matters because a managed Auto
+profile can still arrive at hooks as `permission_mode: "default"`. Changing
+permissions takes effect on the next turn.
 
 In Manual mode:
 
